@@ -3,6 +3,7 @@ use std::{
     time::Instant,
 };
 
+use libmonado_rs::{Monado};
 use anyhow::bail;
 use rosc::{OscMessage, OscPacket, OscType};
 
@@ -46,7 +47,7 @@ impl OscSender {
         Ok(())
     }
 
-    pub fn send_params<D>(&mut self, overlays: &OverlayContainer<D>) -> anyhow::Result<()>
+    pub fn send_params<D>(&mut self, overlays: &OverlayContainer<D>, monado: &mut Monado) -> anyhow::Result<()>
     where
         D: Default,
     {
@@ -73,6 +74,18 @@ impl OscSender {
             }
         }
 
+
+        let hmd_device = monado.device_from_role("head").unwrap();
+        let mut hmd_battery = 255;
+
+        if let Ok(status) = hmd_device.battery_status() {
+        //if let Ok(hmd_device) = hmd_device {
+            if status.present {
+                hmd_battery = (status.charge * 100.0f32).round() as i32;
+            }
+        }
+
+
         self.send_message(
             "/avatar/parameters/isOverlayOpen".into(),
             vec![OscType::Bool(num_overlays > 0)],
@@ -88,6 +101,10 @@ impl OscSender {
         self.send_message(
             "/avatar/parameters/openOverlayCount".into(),
             vec![OscType::Int(num_overlays)],
+        )?;
+        self.send_message(
+            "/avatar/parameters/hmdBattery".into(),
+            vec![OscType::Int(hmd_battery)],
         )?;
 
         Ok(())
