@@ -39,7 +39,8 @@ impl OverlayData<OpenXrOverlayData> {
             return Ok(CompositionLayer::None);
         };
 
-        let extent = self.extent().unwrap(); // want panic
+        let frame_transform = self.frame_transform().unwrap(); // want panic
+        let extent = frame_transform.extent;
 
         let data = match self.data.swapchain {
             Some(ref mut data) => data,
@@ -65,19 +66,21 @@ impl OverlayData<OpenXrOverlayData> {
 
         let sub_image = data.acquire_present_release(command_buffer, my_view, self.state.alpha)?;
 
+        let transform = self.state.transform * frame_transform.transform;
+
         let aspect_ratio = extent[1] as f32 / extent[0] as f32;
         let (scale_x, scale_y) = if aspect_ratio < 1.0 {
-            let major = self.state.transform.matrix3.col(0).length();
+            let major = transform.matrix3.col(0).length();
             (major, major * aspect_ratio)
         } else {
-            let major = self.state.transform.matrix3.col(1).length();
+            let major = transform.matrix3.col(1).length();
             (major / aspect_ratio, major)
         };
 
         if let Some(curvature) = self.state.curvature {
             let radius = scale_x / (2.0 * PI * curvature);
-            let quat = helpers::transform_to_norm_quat(&self.state.transform);
-            let center_point = self.state.transform.translation + quat.mul_vec3a(Vec3A::Z * radius);
+            let quat = helpers::transform_to_norm_quat(&transform);
+            let center_point = transform.translation + quat.mul_vec3a(Vec3A::Z * radius);
 
             let posef = helpers::translation_rotation_to_posef(center_point, quat);
             let angle = 2.0 * (scale_x / (2.0 * radius));
@@ -93,7 +96,7 @@ impl OverlayData<OpenXrOverlayData> {
                 .aspect_ratio(aspect_ratio);
             Ok(CompositionLayer::Cylinder(cylinder))
         } else {
-            let posef = helpers::transform_to_posef(&self.state.transform);
+            let posef = helpers::transform_to_posef(&transform);
             let quad = xr::CompositionLayerQuad::new()
                 .layer_flags(CompositionLayerFlags::BLEND_TEXTURE_SOURCE_ALPHA)
                 .pose(posef)

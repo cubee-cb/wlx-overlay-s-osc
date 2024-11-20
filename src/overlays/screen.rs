@@ -13,6 +13,8 @@ use vulkano::{
     image::{sampler::Filter, view::ImageView, Image},
     pipeline::graphics::color_blend::AttachmentBlend,
 };
+use wlx_capture::frame as wlx_frame;
+
 use wlx_capture::{
     frame::{
         DrmFormat, FrameFormat, MouseMeta, WlxFrame, DRM_FORMAT_ABGR2101010, DRM_FORMAT_ABGR8888,
@@ -46,12 +48,12 @@ use {
 #[cfg(feature = "x11")]
 use wlx_capture::xshm::{XshmCapture, XshmScreen};
 
-use glam::{vec2, vec3a, Affine2, Quat, Vec2, Vec3};
+use glam::{vec2, vec3a, Affine2, Affine3A, Quat, Vec2, Vec3};
 
 use crate::{
     backend::{
         input::{Haptics, InteractionHandler, PointerHit, PointerMode},
-        overlay::{OverlayRenderer, OverlayState, SplitOverlayBackend},
+        overlay::{FrameTransform, OverlayRenderer, OverlayState, SplitOverlayBackend},
     },
     config::{def_pw_tokens, GeneralConfig, PwTokenMap},
     graphics::{
@@ -284,6 +286,7 @@ pub struct ScreenRenderer {
     capture: Box<dyn WlxCapture>,
     pipeline: Option<ScreenPipeline>,
     last_view: Option<Arc<ImageView>>,
+    transform: Affine3A,
     extent: Option<[u32; 3]>,
 }
 
@@ -295,6 +298,7 @@ impl ScreenRenderer {
             capture,
             pipeline: None,
             last_view: None,
+            transform: Affine3A::IDENTITY,
             extent: None,
         }
     }
@@ -309,6 +313,7 @@ impl ScreenRenderer {
             capture: Box::new(capture),
             pipeline: None,
             last_view: None,
+            transform: Affine3A::IDENTITY,
             extent: None,
         })
     }
@@ -323,6 +328,7 @@ impl ScreenRenderer {
             capture: Box::new(capture),
             pipeline: None,
             last_view: None,
+            transform: Affine3A::IDENTITY,
             extent: None,
         })
     }
@@ -365,6 +371,7 @@ impl ScreenRenderer {
                 capture: Box::new(capture),
                 pipeline: None,
                 last_view: None,
+                transform: Affine3A::IDENTITY,
                 extent: None,
             },
             select_screen_result.restore_token,
@@ -380,6 +387,7 @@ impl ScreenRenderer {
             capture: Box::new(capture),
             pipeline: None,
             last_view: None,
+            transform: Affine3A::IDENTITY,
             extent: None,
         }
     }
@@ -471,6 +479,9 @@ impl OverlayRenderer for ScreenRenderer {
                     self.extent.get_or_insert_with(|| {
                         extent_from_format(frame.format, &app.session.config)
                     });
+                    if let Some(new_transform) = affine_from_format(&frame.format) {
+                        self.transform = new_transform;
+                    }
                     match app.graphics.dmabuf_texture(frame) {
                         Ok(new) => {
                             let pipeline = match self.pipeline {
@@ -513,6 +524,9 @@ impl OverlayRenderer for ScreenRenderer {
                     self.extent.get_or_insert_with(|| {
                         extent_from_format(frame.format, &app.session.config)
                     });
+                    if let Some(new_transform) = affine_from_format(&frame.format) {
+                        self.transform = new_transform;
+                    }
                     log::debug!("{}: New MemFd frame", self.name);
                     let format = fourcc_to_vk(frame.format.fourcc)?;
 
@@ -601,8 +615,11 @@ impl OverlayRenderer for ScreenRenderer {
     fn view(&mut self) -> Option<Arc<ImageView>> {
         self.last_view.clone()
     }
-    fn extent(&mut self) -> Option<[u32; 3]> {
-        self.extent
+    fn frame_transform(&mut self) -> Option<FrameTransform> {
+        self.extent.map(|extent| FrameTransform {
+            extent,
+            transform: self.transform,
+        })
     }
 }
 
@@ -771,16 +788,10 @@ pub fn create_screens_wayland(
     wl: &mut WlxClientAlias,
     app: &mut AppState,
 ) -> anyhow::Result<ScreenCreateData> {
-    use crate::config::AStrMap;
-
     let mut screens = vec![];
 
     // Load existing Pipewire tokens from file
-    let mut pw_tokens: PwTokenMap = if let Ok(conf) = load_pw_token_config() {
-        conf
-    } else {
-        AStrMap::new()
-    };
+    let mut pw_tokens: PwTokenMap = load_pw_token_config().unwrap_or_default();
 
     let pw_tokens_copy = pw_tokens.clone();
     let has_wlr_dmabuf = wl.maybe_wlr_dmabuf_mgr.is_some();
@@ -857,15 +868,10 @@ pub fn create_screens_x11pw(_app: &mut AppState) -> anyhow::Result<ScreenCreateD
 
 #[cfg(all(feature = "x11", feature = "pipewire"))]
 pub fn create_screens_x11pw(app: &mut AppState) -> anyhow::Result<ScreenCreateData> {
-    use crate::config::{AStrMap, AStrMapExt};
     use anyhow::bail;
 
     // Load existing Pipewire tokens from file
-    let mut pw_tokens: PwTokenMap = if let Ok(conf) = load_pw_token_config() {
-        conf
-    } else {
-        AStrMap::new()
-    };
+    let mut pw_tokens: PwTokenMap = load_pw_token_config().unwrap_or_default();
     let pw_tokens_copy = pw_tokens.clone();
     let token = pw_tokens.arc_get("x11").map(|s| s.as_str());
     let embed_mouse = !app.session.config.double_cursor_fix;
@@ -931,6 +937,7 @@ pub fn create_screens_x11pw(app: &mut AppState) -> anyhow::Result<ScreenCreateDa
                 capture: Box::new(PipewireCapture::new(m.name.clone(), s.node_id)),
                 pipeline: None,
                 last_view: None,
+                transform: Affine3A::IDENTITY,
                 extent: Some(extent_from_res(
                     size.0 as _,
                     size.1 as _,
@@ -1048,6 +1055,32 @@ fn extent_from_res(width: u32, height: u32, config: &GeneralConfig) -> [u32; 3] 
     let h = height.min(config.screen_max_height as u32);
     let w = (width as f32 / height as f32 * h as f32) as u32;
     [w, h, 1]
+}
+
+fn affine_from_format(format: &FrameFormat) -> Option<Affine3A> {
+    const FLIP_X: Vec3 = Vec3 {
+        x: -1.0,
+        y: 1.0,
+        z: 1.0,
+    };
+
+    Some(match format.transform {
+        wlx_frame::Transform::Normal => Affine3A::IDENTITY,
+        wlx_frame::Transform::Rotated90 => Affine3A::from_rotation_z(-PI / 2.0),
+        wlx_frame::Transform::Rotated180 => Affine3A::from_rotation_z(PI),
+        wlx_frame::Transform::Rotated270 => Affine3A::from_rotation_z(PI / 2.0),
+        wlx_frame::Transform::Flipped => Affine3A::from_scale(FLIP_X),
+        wlx_frame::Transform::Flipped90 => {
+            Affine3A::from_scale(FLIP_X) * Affine3A::from_rotation_z(-PI / 2.0)
+        }
+        wlx_frame::Transform::Flipped180 => {
+            Affine3A::from_scale(FLIP_X) * Affine3A::from_rotation_z(PI)
+        }
+        wlx_frame::Transform::Flipped270 => {
+            Affine3A::from_scale(FLIP_X) * Affine3A::from_rotation_z(PI / 2.0)
+        }
+        wlx_frame::Transform::Undefined => return None,
+    })
 }
 
 #[cfg(all(feature = "pipewire", feature = "x11"))]
