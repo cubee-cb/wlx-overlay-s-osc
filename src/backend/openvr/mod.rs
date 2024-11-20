@@ -324,7 +324,7 @@ pub fn openvr_run(running: Arc<AtomicBool>, show_by_default: bool) -> Result<(),
 
         #[cfg(feature = "osc")]
         if let Some(ref mut sender) = osc_sender {
-            let _ = sender.send_params(&overlays);
+            let _ = sender.send_params(&overlays, monado.as_mut().unwrap());
         };
 
         #[cfg(feature = "wayvr")]
