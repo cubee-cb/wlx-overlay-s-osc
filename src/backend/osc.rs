@@ -136,7 +136,7 @@ impl OscSender {
         // currently they still use 0-100, but this may change in a future update.
         self.send_message(
             "/avatar/parameters/hmdBattery".into(),
-                          vec![OscType::Float(hmd_battery)],
+                          vec![OscType::Int((hmd_battery * 100.0f32).round() as i32)],
         )?;
 
         Ok(())
