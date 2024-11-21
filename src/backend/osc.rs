@@ -91,15 +91,15 @@ impl OscSender {
         )?;
 
         // send battery levels, as 0-1
-        // assume 0,1,2 are hmd,left,right controller, anything else is tracker1-6
+        // assume 0,1,2 are hmd,left,right controller, anything else is a tracker
 
         let hmd_battery = batteries[0];
         let left_controller_battery = batteries[1];
         let right_controller_battery = batteries[2];
 
-        // OVR Toolkit style
+        // XSOverlay style
         self.send_message(
-            "/avatar/parameters/headsetBattery".into(), // this one doesn't exist, but it's a stepping stone for 0-1 values while keeping the OVR Toolkit style parameter on 0-255
+            "/avatar/parameters/headsetBattery".into(), // this one doesn't exist, but it's a stepping stone for 0-1 values while keeping the OVR Toolkit style parameter on 0-100
                           vec![OscType::Float(hmd_battery)],
         )?;
 
@@ -116,7 +116,14 @@ impl OscSender {
                           vec![OscType::Float((right_controller_battery + left_controller_battery) / 2.0)],
         )?;
 
-        // OVR Toolkit compatibility
+        for i in 3..9 {
+            self.send_message(
+                format!("/avatar/parameters/tracker{}Battery", batteries[i]).into(),
+                              vec![OscType::Float(batteries[i])],
+            )?;
+        }
+
+        // OVR Toolkit style
         self.send_message(
             "/avatar/parameters/hmdBattery".into(),
                           vec![OscType::Int((hmd_battery * 100.0f32).round() as i32)],

@@ -305,16 +305,14 @@ pub fn openxr_run(running: Arc<AtomicBool>, show_by_default: bool) -> Result<(),
         #[cfg(feature = "osc")]
         if let Some(ref mut sender) = osc_sender {
 
-            // get batteries
             let mut batteries: [f32; 9] = [-1.0; 9];
             let monado_unwrap = monado.as_mut().unwrap();
 
-            // get devices
+            /*/ get devices
             let hmd_device = monado_unwrap.device_from_role("head").unwrap();
             let left_controller_device = monado_unwrap.device_from_role("left").unwrap();
             let right_controller_device = monado_unwrap.device_from_role("right").unwrap();
 
-            // get their battery status
             if let Ok(status) = hmd_device.battery_status() {
                 if status.present {
                     batteries[0] = status.charge;
@@ -328,6 +326,20 @@ pub fn openxr_run(running: Arc<AtomicBool>, show_by_default: bool) -> Result<(),
             if let Ok(status) = right_controller_device.battery_status() {
                 if status.present {
                     batteries[2] = status.charge;
+                }
+            }
+            // */
+
+            // get the battery level of all devices
+            if let Ok(devices) = monado_unwrap.devices() {
+                for device in devices {
+                    if device.id < 9 {
+                        if let Ok(status) = device.battery_status() {
+                            if status.present {
+                                batteries[device.id as usize] = status.charge;
+                            }
+                        }
+                    }
                 }
             }
 
