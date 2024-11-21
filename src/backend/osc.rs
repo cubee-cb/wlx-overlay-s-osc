@@ -97,10 +97,12 @@ impl OscSender {
         let right_controller_battery = batteries[2];
 
         // XSOverlay style
+        /*/
         self.send_message(
             "/avatar/parameters/headsetBattery".into(), // this one doesn't exist, but it's a stepping stone for 0-1 values while keeping the OVR Toolkit style parameter on 0-100
                           vec![OscType::Float(hmd_battery)],
         )?;
+        // */
 
         self.send_message(
             "/avatar/parameters/leftControllerBattery".into(),
@@ -130,9 +132,11 @@ impl OscSender {
         // */
 
         // OVR Toolkit style
+        // according to their docs, OVR Toolkit is now supposed to use 0-1.
+        // currently they still use 0-100, but this may change in a future update.
         self.send_message(
             "/avatar/parameters/hmdBattery".into(),
-                          vec![OscType::Int((hmd_battery * 100.0f32).round() as i32)],
+                          vec![OscType::Float(hmd_battery)],
         )?;
 
         Ok(())
