@@ -3,7 +3,6 @@ use std::{
     time::Instant,
 };
 
-use libmonado_rs::{Monado};
 use anyhow::bail;
 use rosc::{OscMessage, OscPacket, OscType};
 
@@ -47,7 +46,7 @@ impl OscSender {
         Ok(())
     }
 
-    pub fn send_params<D>(&mut self, overlays: &OverlayContainer<D>, monado: &mut Monado) -> anyhow::Result<()>
+    pub fn send_params<D>(&mut self, overlays: &OverlayContainer<D>, batteries: &[f32; 9]) -> anyhow::Result<()>
     where
         D: Default,
     {
@@ -74,18 +73,6 @@ impl OscSender {
             }
         }
 
-
-        let hmd_device = monado.device_from_role("head").unwrap();
-        let mut hmd_battery = 255;
-
-        if let Ok(status) = hmd_device.battery_status() {
-        //if let Ok(hmd_device) = hmd_device {
-            if status.present {
-                hmd_battery = (status.charge * 100.0f32).round() as i32;
-            }
-        }
-
-
         self.send_message(
             "/avatar/parameters/isOverlayOpen".into(),
             vec![OscType::Bool(num_overlays > 0)],
@@ -102,9 +89,37 @@ impl OscSender {
             "/avatar/parameters/openOverlayCount".into(),
             vec![OscType::Int(num_overlays)],
         )?;
+
+        // send battery levels, as 0-1
+        // assume 0,1,2 are hmd,left,right controller, anything else is tracker1-6
+
+        let hmd_battery = batteries[0];
+        let left_controller_battery = batteries[1];
+        let right_controller_battery = batteries[2];
+
+        // OVR Toolkit style
+        self.send_message(
+            "/avatar/parameters/headsetBattery".into(), // this one doesn't exist, but it's a stepping stone for 0-1 values while keeping the OVR Toolkit style parameter on 0-255
+                          vec![OscType::Float(hmd_battery)],
+        )?;
+
+        self.send_message(
+            "/avatar/parameters/leftControllerBattery".into(),
+                          vec![OscType::Float(right_controller_battery)],
+        )?;
+        self.send_message(
+            "/avatar/parameters/rightControllerBattery".into(),
+                          vec![OscType::Float(left_controller_battery)],
+        )?;
+        self.send_message(
+            "/avatar/parameters/averageControllerBattery".into(),
+                          vec![OscType::Float((right_controller_battery + left_controller_battery) / 2.0)],
+        )?;
+
+        // OVR Toolkit compatibility
         self.send_message(
             "/avatar/parameters/hmdBattery".into(),
-            vec![OscType::Int(hmd_battery)],
+                          vec![OscType::Int((hmd_battery * 100.0f32).round() as i32)],
         )?;
 
         Ok(())
