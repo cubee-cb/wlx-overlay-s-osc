@@ -92,7 +92,6 @@ impl OscSender {
 
         // send battery levels, as 0-1
         // assume 0,1,2 are hmd,left,right controller, anything else is a tracker
-
         let hmd_battery = batteries[0];
         let left_controller_battery = batteries[1];
         let right_controller_battery = batteries[2];
@@ -116,12 +115,19 @@ impl OscSender {
                           vec![OscType::Float((right_controller_battery + left_controller_battery) / 2.0)],
         )?;
 
+        /*/ TODO: uncomment once we have the trackers' battery info
         for i in 3..9 {
             self.send_message(
-                format!("/avatar/parameters/tracker{}Battery", batteries[i]).into(),
-                              vec![OscType::Float(batteries[i])],
+                format!("/avatar/parameters/tracker{}Battery", i).into(),
+                                vec![OscType::Float(batteries[i])],
             )?;
         }
+        // TODO: get average tracker battery, excluding ones with -1
+        self.send_message(
+            "/avatar/parameters/averageTrackerBattery".into(),
+                            vec![OscType::Float(1.0)],
+        )?;
+        // */
 
         // OVR Toolkit style
         self.send_message(

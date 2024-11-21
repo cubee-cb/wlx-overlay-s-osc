@@ -328,11 +328,11 @@ pub fn openvr_run(running: Arc<AtomicBool>, show_by_default: bool) -> Result<(),
             // get batteries
             let mut batteries: [f32; 9] = [-1.0; 9];
 
-            // get the compiler to shut up about batteries being mutable
-            // also make sure the hmd battery is full so integrations don't die
+            // get the compiler to shut up about batteries being mutable by setting hmd battery to full
             batteries[0] = 1.0;
 
-            /*/ how to get batteries from steamvr devices?
+            //TODO: get battery levels from steamvr. 0,1,2 are hmd,left,right. 3-8 are trackers.
+            /*/
             // get devices
             let hmd_device = monado_unwrap.device_from_role("head").unwrap();
             let left_controller_device = monado_unwrap.device_from_role("left").unwrap();
