@@ -42,6 +42,9 @@ mod playspace;
 mod skybox;
 mod swapchain;
 
+#[cfg(feature = "osc")]
+const MAX_SENT_BATTERIES: usize = 9;
+
 const VIEW_TYPE: xr::ViewConfigurationType = xr::ViewConfigurationType::PRIMARY_STEREO;
 const VIEW_COUNT: u32 = 2;
 static FRAME_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -305,43 +308,54 @@ pub fn openxr_run(running: Arc<AtomicBool>, show_by_default: bool) -> Result<(),
         #[cfg(feature = "osc")]
         if let Some(ref mut sender) = osc_sender {
 
-            let mut batteries: [f32; 9] = [-1.0; 9];
+            let mut batteries: [f32; MAX_SENT_BATTERIES] = [-1.0; MAX_SENT_BATTERIES];
             let monado_unwrap = monado.as_mut().unwrap();
-
+            let mut seen = Vec::<u32>::with_capacity(MAX_SENT_BATTERIES);
+            
             // get devices
+            // idx 0,1,2 are reserved for hmd,left,right devices, while the rest are treated as trackers
             let hmd_device = monado_unwrap.device_from_role("head").unwrap();
             let left_controller_device = monado_unwrap.device_from_role("left").unwrap();
             let right_controller_device = monado_unwrap.device_from_role("right").unwrap();
 
             if let Ok(status) = hmd_device.battery_status() {
-                if status.present {
-                    batteries[0] = status.charge;
-                }
+                let level = if status.present {status.charge} else {-1.0};
+                batteries[0] = level;
+
+                seen.push(hmd_device.index);
             }
             if let Ok(status) = left_controller_device.battery_status() {
-                if status.present {
-                    batteries[1] = status.charge;
-                }
+                let level = if status.present {status.charge} else {-1.0};
+                batteries[1] = level;
+                
+                seen.push(left_controller_device.index);
             }
             if let Ok(status) = right_controller_device.battery_status() {
-                if status.present {
-                    batteries[2] = status.charge;
-                }
+                let level = if status.present {status.charge} else {-1.0};
+                batteries[2] = level;
+                
+                seen.push(right_controller_device.index);
             }
 
-            /*/TODO: get the battery level of remaining devices
+            // get the battery level of remaining devices
+            let mut idx = 3;
             if let Ok(devices) = monado_unwrap.devices() {
                 for device in devices {
-                    if device.id < 9 {
-                        if let Ok(status) = device.battery_status() {
-                            if status.present {
-                                batteries[device.id as usize] = status.charge;
-                            }
-                        }
+                    if seen.contains(&device.index) {
+                        continue;
+                    }
+
+                    if let Ok(status) = device.battery_status() {
+                        let level = if status.present {status.charge} else {-1.0};
+                        batteries[idx] = level;
+                        idx += 1;
+                    }
+
+                    if idx >= MAX_SENT_BATTERIES {
+                        break;
                     }
                 }
             }
-            // */
 
             let _ = sender.send_params(&overlays, &batteries);
         };
